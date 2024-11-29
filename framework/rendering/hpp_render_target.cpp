@@ -105,6 +105,11 @@ const vk::Extent2D &HPPRenderTarget::get_extent() const
 	return extent;
 }
 
+const std::vector<core::HPPImage> &HPPRenderTarget::get_images() const
+{
+	return images;
+}
+
 const std::vector<core::HPPImageView> &HPPRenderTarget::get_views() const
 {
 	return views;

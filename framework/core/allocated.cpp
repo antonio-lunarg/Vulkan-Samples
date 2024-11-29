@@ -78,6 +78,11 @@ VkDeviceMemory AllocatedBase::get_memory() const
 	return alloc_info.deviceMemory;
 }
 
+VmaAllocation AllocatedBase::get_allocation() const
+{
+	return allocation;
+}
+
 void AllocatedBase::flush(VkDeviceSize offset, VkDeviceSize size)
 {
 	if (!coherent)

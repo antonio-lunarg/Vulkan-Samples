@@ -225,8 +225,16 @@ build\windows\app\bin\Release\AMD64\vulkan_samples.exe
 * <<cmake-options,CMake Options>>
 * <<3d-models,3D models>>
 
+Ubuntu:
+
 ----
 sudo apt-get install cmake g++ xorg-dev libglu1-mesa-dev
+----
+
+Fedora:
+
+----
+sudo dnf install cmake g++ xorg-x11-server-devel mesa-libGL-devel libXinerama-devel libXcursor-devel libXi-devel
 ----
 
 === Build with CMake
