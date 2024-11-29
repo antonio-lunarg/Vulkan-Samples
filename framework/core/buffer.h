@@ -131,6 +131,10 @@ class Buffer
 	Buffer &operator=(const Buffer &) = delete;
 	Buffer &operator=(Buffer &&)      = default;
 
+	Buffer(DeviceType    &device,
+	       vk::Buffer     handle,
+	       DeviceSizeType size);
+
 	/**
 	 * @brief Creates a buffer using VMA
 	 * @param device A valid Vulkan device
@@ -212,6 +216,15 @@ template <typename T>
 inline Buffer<bindingType> Buffer<bindingType>::create_staging_buffer(DeviceType &device, std::vector<T> const &data)
 {
 	return create_staging_buffer(device, data.size() * sizeof(T), data.data());
+}
+
+template <vkb::BindingType bindingType>
+inline Buffer<bindingType>::Buffer(DeviceType    &device,
+                                   vk::Buffer     handle,
+                                   DeviceSizeType sz) :
+    AllocatedType{handle, &device}
+{
+	size = sz;
 }
 
 template <vkb::BindingType bindingType>

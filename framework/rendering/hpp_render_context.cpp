@@ -75,7 +75,7 @@ void HPPRenderContext::prepare(size_t thread_count, vkb::rendering::HPPRenderTar
 		auto color_image = vkb::core::HPPImage{device,
 		                                       vk::Extent3D{surface_extent.width, surface_extent.height, 1},
 		                                       DEFAULT_VK_FORMAT,        // We can use any format here that we like
-		                                       vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+		                                       vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
 		                                       VMA_MEMORY_USAGE_GPU_ONLY};
 
 		auto render_target = create_render_target_func(std::move(color_image));

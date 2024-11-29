@@ -46,6 +46,7 @@ class BuilderBase
 	BuilderType                   &with_vma_preferred_flags(MemoryPropertyFlagsType flags);
 	BuilderType                   &with_vma_required_flags(MemoryPropertyFlagsType flags);
 	BuilderType                   &with_vma_usage(VmaMemoryUsage usage);
+	BuilderType                   &with_memory(VkDeviceMemory memory);
 
   protected:
 	BuilderBase(const BuilderBase &other) = delete;
@@ -59,6 +60,7 @@ class BuilderBase
 
   protected:
 	VmaAllocationCreateInfo alloc_create_info = {};
+	VkDeviceMemory          memory            = VK_NULL_HANDLE;
 	HPPCreateInfoType       create_info       = {};
 	std::string             debug_name        = {};
 };
@@ -208,6 +210,13 @@ template <vkb::BindingType bindingType, typename BuilderType, typename CreateInf
 inline BuilderType &BuilderBase<bindingType, BuilderType, CreateInfoType>::with_vma_usage(VmaMemoryUsage usage)
 {
 	alloc_create_info.usage = usage;
+	return *static_cast<BuilderType *>(this);
+}
+
+template <vkb::BindingType bindingType, typename BuilderType, typename CreateInfoType>
+inline BuilderType &BuilderBase<bindingType, BuilderType, CreateInfoType>::with_memory(VkDeviceMemory mem)
+{
+	memory = mem;
 	return *static_cast<BuilderType *>(this);
 }
 

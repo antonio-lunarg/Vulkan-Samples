@@ -91,6 +91,8 @@ set(ORDER_LIST
     "color_write_enable"
     "sparse_image"
     "dynamic_primitive_clipping"
+    "external_memory_fd_export"
+    "external_memory_fd_import"
 
     #Performance Samples
     "swapchain_images"

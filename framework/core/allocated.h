@@ -97,6 +97,7 @@ class AllocatedBase
 
 	const uint8_t *get_data() const;
 	VkDeviceMemory get_memory() const;
+	VmaAllocation get_allocation() const;
 
 	/**
 	 * @brief Flushes memory if it is HOST_VISIBLE and not HOST_COHERENT

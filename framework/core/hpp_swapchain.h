@@ -78,7 +78,7 @@ class HPPSwapchain
 	             const vk::Extent2D                      &extent                       = {},
 	             const uint32_t                           image_count                  = 3,
 	             const vk::SurfaceTransformFlagBitsKHR    transform                    = vk::SurfaceTransformFlagBitsKHR::eIdentity,
-	             const std::set<vk::ImageUsageFlagBits>  &image_usage_flags            = {vk::ImageUsageFlagBits::eColorAttachment, vk::ImageUsageFlagBits::eTransferSrc},
+	             const std::set<vk::ImageUsageFlagBits>  &image_usage_flags            = {vk::ImageUsageFlagBits::eColorAttachment, vk::ImageUsageFlagBits::eTransferSrc, vk::ImageUsageFlagBits::eTransferDst},
 	             vk::SwapchainKHR                         old_swapchain                = nullptr);
 
 	HPPSwapchain(const HPPSwapchain &) = delete;

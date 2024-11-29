@@ -74,6 +74,7 @@ class HPPRenderTarget
 
 	HPPRenderTarget &operator=(HPPRenderTarget &&other) noexcept = delete;
 
+	const std::vector<core::HPPImage>     &get_images() const;
 	const vk::Extent2D                    &get_extent() const;
 	const std::vector<core::HPPImageView> &get_views() const;
 	const std::vector<HPPAttachment>      &get_attachments() const;
