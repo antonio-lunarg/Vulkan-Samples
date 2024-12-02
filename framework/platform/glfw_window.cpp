@@ -373,23 +373,17 @@ void GlfwWindow::close()
 	glfwSetWindowShouldClose(handle, GLFW_TRUE);
 }
 
-/// @brief It calculates the dpi factor using the density from GLFW physical size
-/// <a href="https://www.glfw.org/docs/latest/monitor_guide.html#monitor_size">GLFW docs for dpi</a>
+/// @return The monitor content scale as dpi factor
+/// <a href="https://www.glfw.org/docs/latest/monitor_guide.html#monitor_scale">GLFW docs for dpi</a>
 float GlfwWindow::get_dpi_factor() const
 {
 	auto primary_monitor = glfwGetPrimaryMonitor();
-	auto vidmode         = glfwGetVideoMode(primary_monitor);
-
-	int width_mm, height_mm;
-	glfwGetMonitorPhysicalSize(primary_monitor, &width_mm, &height_mm);
 
 	// As suggested by the GLFW monitor guide
-	static const float inch_to_mm       = 25.0f;
-	static const float win_base_density = 96.0f;
+	float width_scale, height_scale;
+	glfwGetMonitorContentScale(primary_monitor, &width_scale, &height_scale);
 
-	auto dpi        = static_cast<uint32_t>(vidmode->width / (width_mm / inch_to_mm));
-	auto dpi_factor = dpi / win_base_density;
-	return dpi_factor;
+	return width_scale;
 }
 
 float GlfwWindow::get_content_scale_factor() const
