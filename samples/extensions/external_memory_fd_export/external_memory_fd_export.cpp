@@ -44,9 +44,9 @@ ExternalMemoryFDExport::ExternalMemoryFDExport()
 
 ExternalMemoryFDExport::~ExternalMemoryFDExport()
 {
-	if (exportable_buffer != VK_NULL_HANDLE)
+	if (exportable_image != VK_NULL_HANDLE)
 	{
-		get_device().get_handle().destroyBuffer(exportable_buffer);
+		get_device().get_handle().destroyImage(exportable_image);
 	}
 	if (exportable_memory != VK_NULL_HANDLE)
 	{
@@ -79,52 +79,85 @@ bool ExternalMemoryFDExport::prepare(const vkb::ApplicationOptions &options)
 	// Add a GUI with the stats you want to monitor
 	create_gui(*window);
 
-	create_exportable_buffer();
+	create_exportable_image();
 
 	return true;
 }
 
-void ExternalMemoryFDExport::create_exportable_buffer()
+vk::Format ExternalMemoryFDExport::get_image_format() const
 {
-	assert(exportable_buffer == VK_NULL_HANDLE);
-	assert(hpp_exportable_buffer == nullptr);
+	return get_render_context().get_format();
+}
 
+vk::Extent3D ExternalMemoryFDExport::get_image_extent() const
+{
 	auto extent = get_render_context().get_surface_extent();
+	return vk::Extent3D{extent.width, extent.height, 1};
+}
 
-	const auto         format        = get_render_context().get_format();
+VkDeviceSize ExternalMemoryFDExport::get_image_size() const
+{
+	auto               extent        = get_render_context().get_surface_extent();
 	constexpr uint32_t channel_count = 4;
 	constexpr uint32_t channel_depth = 1;
-	const VkDeviceSize buffer_size   = extent.width * extent.height * channel_count * channel_depth;
+	const VkDeviceSize image_size    = extent.width * extent.height * channel_count * channel_depth;
+	return image_size;
+}
+
+void ExternalMemoryFDExport::create_exportable_image()
+{
+	assert(exportable_image == VK_NULL_HANDLE);
+	assert(hpp_exportable_image == nullptr);
+	assert(hpp_exportable_image_view == nullptr);
 
 	// VMA does not support VK_KHR_external_memory_fd yet
-	vk::ExternalMemoryBufferCreateInfo external_mem_buf_create_info;
-	external_mem_buf_create_info.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
+	vk::ExternalMemoryImageCreateInfo external_mem_img_create_info;
+	external_mem_img_create_info.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
 
-	vk::BufferCreateInfo buffer_create_info;
-	buffer_create_info.size  = buffer_size;
-	buffer_create_info.usage = vk::BufferUsageFlagBits::eTransferDst;
-	buffer_create_info.setPNext(&external_mem_buf_create_info);
+	vk::ImageCreateInfo image_create_info;
+	image_create_info.imageType     = vk::ImageType::e2D;
+	image_create_info.extent        = get_image_extent();
+	image_create_info.format        = get_image_format();
+	image_create_info.usage         = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst;
+	image_create_info.initialLayout = vk::ImageLayout::eUndefined;
+	image_create_info.tiling        = vk::ImageTiling::eLinear;
+	image_create_info.samples       = vk::SampleCountFlagBits::e1;
+	image_create_info.mipLevels     = 1;
+	image_create_info.arrayLayers   = 1;
+	image_create_info.setPNext(&external_mem_img_create_info);
 
-	exportable_buffer = get_device().get_handle().createBuffer(buffer_create_info);
+	exportable_image = get_device().get_handle().createImage(image_create_info);
 
-	hpp_exportable_buffer = std::make_unique<vkb::core::BufferCpp>(get_device(), exportable_buffer, buffer_size);
+	hpp_exportable_image = std::make_unique<vkb::core::HPPImage>(
+	    get_device(),
+	    exportable_image,
+	    image_create_info.extent,
+	    image_create_info.format,
+	    image_create_info.usage,
+	    image_create_info.samples);
 
 	create_exportable_memory();
 
-	get_device().get_handle().bindBufferMemory(exportable_buffer, exportable_memory, 0);
+	get_device().get_handle().bindImageMemory(exportable_image, exportable_memory, 0);
+
+	hpp_exportable_image_view = std::make_unique<vkb::core::HPPImageView>(
+	    *hpp_exportable_image, vk::ImageViewType::e2D, image_create_info.format, 0, 0, image_create_info.mipLevels,
+	    image_create_info.arrayLayers);
 }
 
 void ExternalMemoryFDExport::create_exportable_memory()
 {
 	assert(exportable_memory == VK_NULL_HANDLE);
 
-	vk::MemoryRequirements mem_reqs = get_device().get_handle().getBufferMemoryRequirements(exportable_buffer);
+	vk::MemoryRequirements mem_reqs = get_device().get_handle().getImageMemoryRequirements(exportable_image);
 
 	vk::ExportMemoryAllocateInfo export_info;
 	export_info.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
 
 	vk::MemoryAllocateInfo allocate_info;
-	allocate_info.allocationSize = hpp_exportable_buffer->get_size();
+
+	allocate_info.allocationSize = get_image_size();
+
 	allocate_info.memoryTypeIndex =
 	    get_device().get_gpu().get_memory_type(
 	        mem_reqs.memoryTypeBits,
@@ -137,7 +170,7 @@ void ExternalMemoryFDExport::create_exportable_memory()
 
 void ExternalMemoryFDExport::export_memory()
 {
-	assert(exportable_buffer != nullptr);
+	assert(exportable_image != nullptr);
 
 	vk::MemoryGetFdInfoKHR get_handle_info = {};
 	get_handle_info.memory                 = exportable_memory;
@@ -253,7 +286,7 @@ void ExternalMemoryFDExport::update(float delta_time)
 
 	command_buffer.begin(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	//  custom draw to inject a copy swapchain to image or to external fd
+	// custom draw to inject a copy swapchain to image or to external fd
 	draw(command_buffer, render_context.get_active_frame().get_render_target());
 
 	command_buffer.end();
@@ -309,7 +342,7 @@ void ExternalMemoryFDExport::draw(vkb::core::HPPCommandBuffer &command_buffer, v
 
 	draw_renderpass(command_buffer, render_target);
 
-	copy_color_image_to_exportable_buffer(command_buffer, render_target);
+	copy_color_image_to_exportable_image(command_buffer, render_target);
 
 	// Prepare target image for presentation
 	{
@@ -325,11 +358,13 @@ void ExternalMemoryFDExport::draw(vkb::core::HPPCommandBuffer &command_buffer, v
 	}
 }
 
-void ExternalMemoryFDExport::copy_color_image_to_exportable_buffer(
+void ExternalMemoryFDExport::copy_color_image_to_exportable_image(
     vkb::core::HPPCommandBuffer     &command_buffer,
     vkb::rendering::HPPRenderTarget &render_target)
 {
-	assert(exportable_buffer != nullptr);
+	assert(exportable_image != VK_NULL_HANDLE);
+	assert(hpp_exportable_image != nullptr);
+	assert(hpp_exportable_image_view != nullptr);
 
 	auto &color_image = render_target.get_images()[0];
 	auto &color_view  = render_target.get_views()[0];
@@ -341,23 +376,37 @@ void ExternalMemoryFDExport::copy_color_image_to_exportable_buffer(
 		memory_barrier.new_layout      = vk::ImageLayout::eTransferSrcOptimal;
 		memory_barrier.src_access_mask = vk::AccessFlagBits::eColorAttachmentWrite;
 		memory_barrier.src_stage_mask  = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		memory_barrier.dst_access_mask = vk::AccessFlagBits::eTransferRead;
 		memory_barrier.dst_stage_mask  = vk::PipelineStageFlagBits::eTransfer;
 
 		command_buffer.image_memory_barrier(color_view, memory_barrier);
 		render_target.set_layout(0, memory_barrier.new_layout);
 	}
 
-	vk::BufferImageCopy buffer_image_copy         = {};
-	buffer_image_copy.imageExtent                 = color_image.get_extent();
-	buffer_image_copy.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-	buffer_image_copy.imageSubresource.layerCount = 1;
+	// Prepare exportable image for copy
+	{
+		vkb::common::HPPImageMemoryBarrier memory_barrier{};
+		memory_barrier.old_layout      = vk::ImageLayout::eUndefined;
+		memory_barrier.new_layout      = vk::ImageLayout::eTransferDstOptimal;
+		memory_barrier.src_stage_mask  = vk::PipelineStageFlagBits::eTopOfPipe;
+		memory_barrier.dst_access_mask = vk::AccessFlagBits::eTransferWrite;
+		memory_barrier.dst_stage_mask  = vk::PipelineStageFlagBits::eTransfer;
 
-	const std::vector<vk::BufferImageCopy> regions = {buffer_image_copy};
+		command_buffer.image_memory_barrier(*hpp_exportable_image_view, memory_barrier);
+	}
 
-	command_buffer.copy_image_to_buffer(
+	vk::ImageCopy image_copy             = {};
+	image_copy.extent                    = color_image.get_extent();
+	image_copy.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+	image_copy.srcSubresource.layerCount = 1;
+	image_copy.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+	image_copy.dstSubresource.layerCount = 1;
+
+	const std::vector<vk::ImageCopy> regions = {image_copy};
+
+	command_buffer.copy_image(
 	    color_image,
-	    vk::ImageLayout::eTransferSrcOptimal,
-	    *hpp_exportable_buffer,
+	    *hpp_exportable_image,
 	    regions);
 }
 

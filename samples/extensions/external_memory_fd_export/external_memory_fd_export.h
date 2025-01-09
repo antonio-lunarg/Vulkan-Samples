@@ -34,18 +34,26 @@ class ExternalMemoryFDExport : public vkb::VulkanSampleCpp
 
 	void draw(vkb::core::HPPCommandBuffer &command_buffer, vkb::rendering::HPPRenderTarget &render_target);
 
-	/// @brief Copy the render target color image ready for presentation to an exportable buffer
-	void copy_color_image_to_exportable_buffer(
-		vkb::core::HPPCommandBuffer &command_buffer,
-		vkb::rendering::HPPRenderTarget &render_target
-	);
+	/// @brief Copy the render target color image ready for presentation to an exportable image
+	void copy_color_image_to_exportable_image(
+	    vkb::core::HPPCommandBuffer     &command_buffer,
+	    vkb::rendering::HPPRenderTarget &render_target);
 
   private:
+	/// @return The format of the exportable image
+	vk::Format get_image_format() const;
+
+	/// @return The extent of the exportable image
+	vk::Extent3D get_image_extent() const;
+
+	/// @return The size in bytes of the exportable image
+	VkDeviceSize get_image_size() const;
+
 	/// @brief Create the exportable memory
 	void create_exportable_memory();
 
-	/// @brief Create the buffer with exportable memory
-	void create_exportable_buffer();
+	/// @brief Create the buffer with exportable image
+	void create_exportable_image();
 
 	/// @brief Export memory to a file descriptor
 	void export_memory();
@@ -59,9 +67,10 @@ class ExternalMemoryFDExport : public vkb::VulkanSampleCpp
 	/// Memory which can be exported to an opaque FD
 	vk::DeviceMemory exportable_memory = VK_NULL_HANDLE;
 
-	/// Buffer created with an exportable memory allocation
-	vk::Buffer exportable_buffer = VK_NULL_HANDLE;
-	std::unique_ptr<vkb::core::BufferCpp>     hpp_exportable_buffer;
+	/// Image created with an exportable memory allocation
+	vk::Image                                exportable_image = VK_NULL_HANDLE;
+	std::unique_ptr<vkb::core::HPPImage>     hpp_exportable_image;
+	std::unique_ptr<vkb::core::HPPImageView> hpp_exportable_image_view;
 };
 
 std::unique_ptr<vkb::VulkanSampleCpp> create_external_memory_fd_export();

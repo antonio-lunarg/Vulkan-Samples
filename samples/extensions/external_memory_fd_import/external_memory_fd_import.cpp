@@ -43,9 +43,9 @@ ExternalMemoryFDImport::ExternalMemoryFDImport()
 
 ExternalMemoryFDImport::~ExternalMemoryFDImport()
 {
-	if (imported_buffer != VK_NULL_HANDLE)
+	if (imported_image != VK_NULL_HANDLE)
 	{
-		get_device().get_handle().destroyBuffer(imported_buffer);
+		get_device().get_handle().destroyImage(imported_image);
 	}
 	if (imported_memory != VK_NULL_HANDLE)
 	{
@@ -78,15 +78,36 @@ bool ExternalMemoryFDImport::prepare(const vkb::ApplicationOptions &options)
 	// Add a GUI with the stats you want to monitor
 	create_gui(*window);
 
-	create_imported_buffer();
+	create_imported_image();
 
 	return true;
 }
 
-void ExternalMemoryFDImport::create_imported_buffer()
+vk::Format ExternalMemoryFDImport::get_image_format() const
 {
-	assert(imported_buffer == VK_NULL_HANDLE);
-	assert(hpp_imported_buffer == nullptr);
+	return get_render_context().get_format();
+}
+
+vk::Extent3D ExternalMemoryFDImport::get_image_extent() const
+{
+	auto extent = get_render_context().get_surface_extent();
+	return vk::Extent3D{extent.width, extent.height, 1};
+}
+
+VkDeviceSize ExternalMemoryFDImport::get_image_size() const
+{
+	auto               extent        = get_render_context().get_surface_extent();
+	constexpr uint32_t channel_count = 4;
+	constexpr uint32_t channel_depth = 1;
+	const VkDeviceSize image_size    = extent.width * extent.height * channel_count * channel_depth;
+	return image_size;
+}
+
+void ExternalMemoryFDImport::create_imported_image()
+{
+	assert(imported_image == VK_NULL_HANDLE);
+	assert(hpp_imported_image == nullptr);
+	assert(hpp_imported_image_view == nullptr);
 
 	auto               extent        = get_render_context().get_surface_extent();
 	constexpr uint32_t channel_count = 4;
@@ -94,34 +115,48 @@ void ExternalMemoryFDImport::create_imported_buffer()
 	const size_t       size          = extent.width * extent.height * channel_count * channel_depth;
 
 	// VMA does does not provide a way to create images with imported memory yet
-	vk::ExternalMemoryBufferCreateInfo external_mem_buf_create_info;
-	external_mem_buf_create_info.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
+	vk::ExternalMemoryImageCreateInfo external_mem_img_create_info;
+	external_mem_img_create_info.handleTypes = vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd;
 
-	vk::BufferCreateInfo buffer_create_info;
-	buffer_create_info.size  = size;
-	buffer_create_info.usage = vk::BufferUsageFlagBits::eTransferSrc;
-	buffer_create_info.pNext = &external_mem_buf_create_info;
+	vk::ImageCreateInfo image_create_info;
+	image_create_info.imageType     = vk::ImageType::e2D;
+	image_create_info.extent        = get_image_extent();
+	image_create_info.format        = get_image_format();
+	image_create_info.usage         = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc;
+	image_create_info.initialLayout = vk::ImageLayout::eUndefined;
+	image_create_info.tiling        = vk::ImageTiling::eLinear;
+	image_create_info.samples       = vk::SampleCountFlagBits::e1;
+	image_create_info.mipLevels     = 1;
+	image_create_info.arrayLayers   = 1;
+	image_create_info.setPNext(&external_mem_img_create_info);
 
-	imported_buffer = get_device().get_handle().createBuffer(buffer_create_info);
+	imported_image = get_device().get_handle().createImage(image_create_info);
 
 	import_memory();
 
-	get_device().get_handle().bindBufferMemory(imported_buffer, imported_memory, 0);
+	get_device().get_handle().bindImageMemory(imported_image, imported_memory, 0);
 
-	hpp_imported_buffer = std::make_unique<vkb::core::BufferCpp>(
+	hpp_imported_image = std::make_unique<vkb::core::HPPImage>(
 	    get_device(),
-	    imported_buffer,
-	    size);
+	    imported_image,
+	    image_create_info.extent,
+	    image_create_info.format,
+	    image_create_info.usage,
+	    image_create_info.samples);
+
+	hpp_imported_image_view = std::make_unique<vkb::core::HPPImageView>(
+	    *hpp_imported_image, vk::ImageViewType::e2D, image_create_info.format, 0, 0, image_create_info.mipLevels,
+	    image_create_info.arrayLayers);
 }
 
 void ExternalMemoryFDImport::import_memory()
 {
 	assert(imported_memory == VK_NULL_HANDLE);
-	assert(imported_buffer != nullptr);
+	assert(imported_image != nullptr);
 
 	int imported_fd = receive_importable_fd();
 
-	vk::MemoryRequirements mem_reqs = get_device().get_handle().getBufferMemoryRequirements(imported_buffer);
+	vk::MemoryRequirements mem_reqs = get_device().get_handle().getImageMemoryRequirements(imported_image);
 
 	// To import memory, there is a VkImport*Info struct provided by the given external memory extension.This is passed
 	// into vkAllocateMemory where Vulkan will now have a VkDeviceMemory handle that maps to the imported memory.
@@ -265,7 +300,7 @@ void ExternalMemoryFDImport::update(float delta_time)
 
 void ExternalMemoryFDImport::draw(vkb::core::HPPCommandBuffer &command_buffer, vkb::rendering::HPPRenderTarget &render_target)
 {
-	copy_imported_buffer_to_color_image(command_buffer, render_target);
+	copy_imported_image_to_color_image(command_buffer, render_target);
 
 	// Prepare target image for presentation
 	{
@@ -281,39 +316,54 @@ void ExternalMemoryFDImport::draw(vkb::core::HPPCommandBuffer &command_buffer, v
 	}
 }
 
-void ExternalMemoryFDImport::copy_imported_buffer_to_color_image(
+void ExternalMemoryFDImport::copy_imported_image_to_color_image(
     vkb::core::HPPCommandBuffer     &command_buffer,
     vkb::rendering::HPPRenderTarget &render_target)
 {
-	assert(hpp_imported_buffer != nullptr);
+	assert(imported_image != VK_NULL_HANDLE);
+	assert(hpp_imported_image != nullptr);
+	assert(hpp_imported_image_view != nullptr);
 
 	auto &color_image = render_target.get_images()[0];
 	auto &color_view  = render_target.get_views()[0];
+
+	// Prepare exportable image for copy
+	{
+		vkb::common::HPPImageMemoryBarrier memory_barrier{};
+		memory_barrier.old_layout      = vk::ImageLayout::eUndefined;
+		memory_barrier.new_layout      = vk::ImageLayout::eTransferSrcOptimal;
+		memory_barrier.src_stage_mask  = vk::PipelineStageFlagBits::eTopOfPipe;
+		memory_barrier.dst_access_mask = vk::AccessFlagBits::eTransferRead;
+		memory_barrier.dst_stage_mask  = vk::PipelineStageFlagBits::eTransfer;
+
+		command_buffer.image_memory_barrier(*hpp_imported_image_view, memory_barrier);
+	}
 
 	// Prepare color image for copy
 	{
 		vkb::common::HPPImageMemoryBarrier memory_barrier{};
 		memory_barrier.old_layout      = vk::ImageLayout::eUndefined;
 		memory_barrier.new_layout      = vk::ImageLayout::eTransferDstOptimal;
-		memory_barrier.src_access_mask = {};
+		memory_barrier.src_access_mask = vk::AccessFlagBits::eColorAttachmentWrite;
 		memory_barrier.src_stage_mask  = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		memory_barrier.dst_access_mask = vk::AccessFlagBits::eTransferWrite;
 		memory_barrier.dst_stage_mask  = vk::PipelineStageFlagBits::eTransfer;
 
 		command_buffer.image_memory_barrier(color_view, memory_barrier);
 		render_target.set_layout(0, memory_barrier.new_layout);
 	}
 
-	vk::BufferImageCopy buffer_image_copy         = {};
-	buffer_image_copy.bufferRowLength             = color_image.get_extent().width;
-	buffer_image_copy.bufferImageHeight           = color_image.get_extent().height;
-	buffer_image_copy.imageExtent                 = color_image.get_extent();
-	buffer_image_copy.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-	buffer_image_copy.imageSubresource.layerCount = 1;
+	vk::ImageCopy image_copy             = {};
+	image_copy.extent                    = color_image.get_extent();
+	image_copy.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+	image_copy.srcSubresource.layerCount = 1;
+	image_copy.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+	image_copy.dstSubresource.layerCount = 1;
 
-	const std::vector<vk::BufferImageCopy> regions = {buffer_image_copy};
+	const std::vector<vk::ImageCopy> regions = {image_copy};
 
-	command_buffer.copy_buffer_to_image(
-	    *hpp_imported_buffer,
+	command_buffer.copy_image(
+	    *hpp_imported_image,
 	    color_image,
 	    regions);
 }

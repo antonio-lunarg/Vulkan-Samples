@@ -34,14 +34,23 @@ class ExternalMemoryFDImport : public vkb::VulkanSampleCpp
 
 	void draw(vkb::core::HPPCommandBuffer &command_buffer, vkb::rendering::HPPRenderTarget &render_target);
 
-	/// @brief Copy the imported buffer to the render target color image for presentation
-	void copy_imported_buffer_to_color_image(
+	/// @brief Copy the imported image to the render target color image for presentation
+	void copy_imported_image_to_color_image(
 	    vkb::core::HPPCommandBuffer     &command_buffer,
 	    vkb::rendering::HPPRenderTarget &render_target);
 
   private:
-	/// @brief Create the buffer with imported memory
-	void create_imported_buffer();
+	/// @return The format of the imported image
+	vk::Format get_image_format() const;
+
+	/// @return The extent of the imported image
+	vk::Extent3D get_image_extent() const;
+
+	/// @return The size in bytes of the imported image
+	VkDeviceSize get_image_size() const;
+
+	/// @brief Create the image with imported memory
+	void create_imported_image();
 
 	/// @brief Import memory from a file descriptor
 	void import_memory();
@@ -55,9 +64,10 @@ class ExternalMemoryFDImport : public vkb::VulkanSampleCpp
 	/// Imported external memory
 	vk::DeviceMemory imported_memory = VK_NULL_HANDLE;
 
-	/// Buffer created with imported memory
-	vk::Buffer imported_buffer = VK_NULL_HANDLE;
-	std::unique_ptr<vkb::core::BufferCpp> hpp_imported_buffer;
+	/// Image created with imported memory
+	vk::Image                                imported_image = VK_NULL_HANDLE;
+	std::unique_ptr<vkb::core::HPPImage>     hpp_imported_image;
+	std::unique_ptr<vkb::core::HPPImageView> hpp_imported_image_view;
 };
 
 std::unique_ptr<vkb::VulkanSampleCpp> create_external_memory_fd_import();
